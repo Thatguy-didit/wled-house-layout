@@ -500,13 +500,13 @@ body.hm-pc.hm-mapper-focus #buttonMapper {
 	height: calc(4px / var(--z,1));
 	transform: translate(-50%,-50%);
 	border-radius: 50%;
-	border: calc(.75px / var(--z,1)) solid #fff;
+	border: calc(.4px / var(--z,1)) solid rgba(255,255,255,.28);
 	background: var(--c,#ffd166);
-	box-shadow: 0 0 calc(1.25px / var(--z,1)) var(--c,#ffd166);
+	box-shadow: 0 0 calc(2.5px / var(--z,1)) var(--c,#ffd166);
 }
 .hm-preview { pointer-events: none; }
 #hm-canvas .hm-preview .hm-pixel { opacity: .75; }
-#hm-canvas .hm-preview .hm-pixel:before { background: #60d9ff; box-shadow: 0 0 calc(1.25px / var(--z,1)) #60d9ff; }
+#hm-canvas .hm-preview .hm-pixel:before { background: #60d9ff; border-color: rgba(255,255,255,.35); box-shadow: 0 0 calc(2.5px / var(--z,1)) #60d9ff; }
 #hm-canvas .hm-pixel.sel:after {
 	content: "";
 	position: absolute;
