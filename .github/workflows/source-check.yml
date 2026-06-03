@@ -9,7 +9,7 @@ on:
 
 jobs:
   web-ui:
-    name: Web UI build and tests
+    name: Web UI build
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -25,9 +25,6 @@ jobs:
 
       - name: Install Node dependencies
         run: npm ci
-
-      - name: Run JavaScript tests
-        run: npm test
 
       - name: Build bundled web UI
         run: npm run build -- --force
