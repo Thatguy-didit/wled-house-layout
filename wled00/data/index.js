@@ -3379,7 +3379,7 @@ function checkVersionUpgrade(info) {
 		});
 }
 
-let hmTool="point", hmPixels=[], hmSegments=[], hmSelected=[], hmActiveSegment=null, hmDrag=null, hmPanDrag=null, hmLineStart=null, hmLineEnd=null, hmMenuPixel=null, hmPressTimer=null, hmCfg=null, hmOutputs=[], hmCurrentOutput=0, hmZoom=1, hmPanX=0, hmPanY=0, hmPic={x:0,y:0,w:1,h:1}, hmTouches=new Map(), hmPinch=null, hmLiveColors=[], hmLiveOn=false, hmLiveTimer=null, hmReady=false;
+let hmTool="point", hmPixels=[], hmSegments=[], hmSelected=[], hmActiveSegment=null, hmDrag=null, hmPanDrag=null, hmLineStart=null, hmLineEnd=null, hmMenuPixel=null, hmPressTimer=null, hmCfg=null, hmOutputs=[], hmCurrentOutput=0, hmZoom=1, hmPanX=0, hmPanY=0, hmPic={x:0,y:0,w:1,h:1}, hmTouches=new Map(), hmPinch=null, hmTouchSelectKey=null, hmLiveColors=[], hmLiveOn=false, hmLiveTimer=null, hmReady=false;
 
 function hmEl(id) { return gId("hm-"+id); }
 function hmOpenMapper(){ if(pcMode&&d.body.classList.contains('hm-mapper-focus')) openTab(0,true); else openTab(4,true); }
@@ -3501,20 +3501,23 @@ function hmStageMove(e) {
 }
 function hmStageUp(e) {
 	clearTimeout(hmPressTimer);
-	if(hmPanDrag){let pd=hmPanDrag;hmPanDrag=null;if(!pd.moved){if(e.shiftKey||e.ctrlKey||e.metaKey)return;if(pd.tool=="point")hmAddPixel(pd.p.x,pd.p.y);else if(pd.tool=="select"){hmActiveSegment=null;hmSelected=[];hmDraw();}}return;}
+	if(hmPanDrag&&e.pointerType=="touch"&&hmTouchSelectKey!=null&&hmTouchSelectKey!=e.pointerId)return;
+	if(hmPanDrag){let pd=hmPanDrag;hmPanDrag=null;if(!pd.moved){if(e.shiftKey||e.ctrlKey||e.metaKey||hmTouchSelectKey==e.pointerId)return;if(pd.tool=="point")hmAddPixel(pd.p.x,pd.p.y);else if(pd.tool=="select"){hmActiveSegment=null;hmSelected=[];hmDraw();}}return;}
 	if(hmLineStart&&hmTool=="line"){let p=hmLineEnd||hmPt(e),dist=Math.hypot(p.x-hmLineStart.x,p.y-hmLineStart.y);if(dist>.25){let run="run-"+Date.now();hmLinePoints(hmLineStart,p).forEach(q=>hmAddPixel(q.x,q.y,run,true));hmSelected=hmPixels.filter(x=>x.run==run).map(x=>x.id);}hmLineStart=null;hmClearPreview();hmDraw();}
 	hmDrag=null;
 }
 function hmTouchPoint(e){return{x:e.clientX,y:e.clientY};}
+function hmTouchSelectActive(e){return e.pointerType=="touch"&&hmTool=="select"&&hmTouchSelectKey!=null&&hmTouchSelectKey!=e.pointerId;}
 function hmPinchInfo(){let pts=[...hmTouches.values()];if(pts.length<2)return null;let a=pts[0],b=pts[1],dx=b.x-a.x,dy=b.y-a.y;return{dist:Math.hypot(dx,dy),cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};}
-function hmPointerDown(e){if(e.pointerType=="touch"){hmTouches.set(e.pointerId,hmTouchPoint(e));if(hmTouches.size==2){clearTimeout(hmPressTimer);hmPanDrag=null;hmDrag=null;hmLineStart=null;hmClearPreview();let p=hmPinchInfo();hmPinch={dist:p.dist,zoom:hmZoom};return;}}hmStageDown(e);}
+function hmPointerDown(e){if(e.pointerType=="touch"){hmTouches.set(e.pointerId,hmTouchPoint(e));if(hmTool=="select"&&!e.target.dataset.id&&hmTouches.size==1)hmTouchSelectKey=e.pointerId;if(hmTouches.size==2){hmTouchSelectKey=null;clearTimeout(hmPressTimer);hmPanDrag=null;hmDrag=null;hmLineStart=null;hmClearPreview();let p=hmPinchInfo();hmPinch={dist:p.dist,zoom:hmZoom};return;}}hmStageDown(e);}
 function hmPointerMove(e){if(e.pointerType=="touch"&&hmTouches.has(e.pointerId)){hmTouches.set(e.pointerId,hmTouchPoint(e));if(hmPinch&&hmTouches.size>=2){let p=hmPinchInfo();if(p&&hmPinch.dist>0)hmSetZoom(hmPinch.zoom*100*(p.dist/hmPinch.dist),p.cx-hmStageRect().left,p.cy-hmStageRect().top);return;}}hmStageMove(e);}
-function hmPointerUp(e){if(e.pointerType=="touch"){hmTouches.delete(e.pointerId);if(hmPinch){hmPinch=null;hmPanDrag=null;hmDrag=null;hmLineStart=null;hmClearPreview();return;}}hmStageUp(e);}
+function hmPointerUp(e){if(e.pointerType=="touch"){hmTouches.delete(e.pointerId);if(hmPinch){hmPinch=null;hmPanDrag=null;hmDrag=null;hmLineStart=null;hmClearPreview();return;}}hmStageUp(e);if(e.pointerType=="touch"&&hmTouchSelectKey==e.pointerId)hmTouchSelectKey=null;}
 function hmAddPixel(x,y,run,quiet) { hmPixels.push({id:hmNextId(),x,y,out:hmCurrentOutput,run:run||"single-"+Date.now(),seg:null,color:"#ffd166"}); if(!quiet)hmSelected=[hmPixels[hmPixels.length-1].id]; hmDraw(); }
 function hmPixelDown(e,id) {
 	e.stopPropagation(); hmMenuPixel=id; if(e.button==2)return;
 	let p=hmPt(e), runIds=hmIdsForRun(id);
 	hmActiveSegment=null;
+	if(hmTouchSelectActive(e)){hmSelected=hmSelected.includes(id)?hmSelected.filter(x=>x!=id):hmSelected.concat(id);hmDrag=null;clearTimeout(hmPressTimer);hmDraw();return;}
 	if(e.shiftKey){let add=!runIds.every(x=>hmSelected.includes(x));hmSelected=add?[...new Set(hmSelected.concat(runIds))]:hmSelected.filter(x=>!runIds.includes(x));hmDrag=null;clearTimeout(hmPressTimer);hmDraw();return;}
 	if(e.ctrlKey||e.metaKey){hmSelected=hmSelected.includes(id)?hmSelected.filter(x=>x!=id):hmSelected.concat(id);hmDrag=null;clearTimeout(hmPressTimer);hmDraw();return;} else hmSelected=runIds;
 	let ids=hmSelected.includes(id)?hmSelected:[id],offsets={}; hmPixels.forEach(px=>{if(ids.includes(px.id))offsets[px.id]={dx:p.x-px.x,dy:p.y-px.y};});
@@ -3544,7 +3547,7 @@ function hmShowBg(src){let bg=hmEl("bg");bg.onload=hmUpdatePictureRect;bg.onerro
 async function hmUploadPhoto(file){if(!file)return;let ext=(file.name.split(".").pop()||"jpg").toLowerCase(),name="/housemap-bg."+ext,fd=new FormData();fd.append("data",file,name);try{await fetch(getURL("/upload"),{method:"POST",body:fd});localStorage.setItem("hm-bg",name);}catch(e){}try{let rd=new FileReader();rd.onload=()=>localStorage.setItem("hm-bg-data",rd.result);rd.readAsDataURL(file);}catch(e){}hmShowBg(URL.createObjectURL(file));}
 async function hmSaveLayout(){let data={pixels:hmPixels,segments:hmSegments,bg:localStorage.getItem("hm-bg")||"",currentOutput:hmCurrentOutput,view:{zoom:hmZoom,panX:hmPanX,panY:hmPanY}};localStorage.setItem("wled-housemap",JSON.stringify(data));let fd=new FormData();fd.append("data",new Blob([JSON.stringify(data)],{type:"application/json"}),"/housemap.json");try{await fetch(getURL("/upload"),{method:"POST",body:fd});hmEl("msg").textContent="Layout saved.";}catch(e){hmEl("msg").textContent="Layout saved in this browser.";}}
 async function hmLoadLayout(){let data=null;try{let r=await fetch(getURL("/edit?func=edit&path=/housemap.json&cb="+Date.now()));if(r.ok)data=await r.json();}catch(e){}if(!data){try{data=JSON.parse(localStorage.getItem("wled-housemap")||"null");}catch(e){}}if(!data){hmEl("msg").textContent="No saved layout found.";hmDrawCount();return;}hmPixels=(data.pixels||[]).map(p=>({...p,out:p.out||0}));hmSegments=data.segments||[];hmActiveSegment=null;hmCurrentOutput=data.currentOutput||0;if(hmEl("outputSel"))hmEl("outputSel").value=hmCurrentOutput;if(data.view){hmZoom=data.view.zoom||1;hmPanX=data.view.panX||0;hmPanY=data.view.panY||0;hmApplyView();}if(data.bg)hmShowBg(getURL(data.bg));else{let dataBg=localStorage.getItem("hm-bg-data");if(dataBg)hmShowBg(dataBg);else hmUpdatePictureRect();}hmDraw();hmEl("msg").textContent="Layout loaded.";}
-async function hmInit(){if(hmReady){setTimeout(hmUpdatePictureRect,50);return;} if(!hmEl("stage"))return; hmReady=true; hmUpdatePictureRect(); try{hmCfg=await(await fetch(getURL("/json/cfg"))).json();}catch(e){} hmBuildOutputs(); hmLoadLayout(); hmEl("stage").addEventListener("wheel",e=>{e.preventDefault();let r=hmStageRect();hmSetZoom(hmZoom*100*(e.deltaY<0?1.12:.89),e.clientX-r.left,e.clientY-r.top);},{passive:false}); hmEl("stage").addEventListener("dragstart",e=>e.preventDefault()); window.addEventListener("pointerup",hmStageUp); window.addEventListener("pointercancel",hmStageUp); window.addEventListener("keydown",hmDeleteKey); window.addEventListener("blur",()=>{hmPanDrag=null;hmDrag=null;hmLineStart=null;hmClearPreview();clearTimeout(hmPressTimer);}); window.addEventListener("resize",hmUpdatePictureRect);}
+async function hmInit(){if(hmReady){setTimeout(hmUpdatePictureRect,50);return;} if(!hmEl("stage"))return; hmReady=true; hmUpdatePictureRect(); try{hmCfg=await(await fetch(getURL("/json/cfg"))).json();}catch(e){} hmBuildOutputs(); hmLoadLayout(); hmEl("stage").addEventListener("wheel",e=>{e.preventDefault();let r=hmStageRect();hmSetZoom(hmZoom*100*(e.deltaY<0?1.12:.89),e.clientX-r.left,e.clientY-r.top);},{passive:false}); hmEl("stage").addEventListener("dragstart",e=>e.preventDefault()); window.addEventListener("pointerup",hmStageUp); window.addEventListener("pointercancel",hmStageUp); window.addEventListener("keydown",hmDeleteKey); window.addEventListener("blur",()=>{hmPanDrag=null;hmDrag=null;hmLineStart=null;hmTouchSelectKey=null;hmClearPreview();clearTimeout(hmPressTimer);}); window.addEventListener("resize",hmUpdatePictureRect);}
 
 function showVersionUpgradePrompt(info, oldVersion, newVersion) {
 	// Determine if this is an install or upgrade
