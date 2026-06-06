@@ -3437,7 +3437,38 @@ function hmOrderedIdsFrom(id) { let ids=hmIdsForRun(id).sort((a,b)=>a-b),at=ids.
 function hmReorderIds(groupIds,start) { let group=groupIds.map(id=>hmPixels.find(p=>p.id==id)).filter(Boolean),rest=hmPixels.filter(p=>!groupIds.includes(p.id)).sort((a,b)=>a.id-b.id); start=Math.max(0,Math.min(start,rest.length)); hmPixels=rest.slice(0,start).concat(group,rest.slice(start)); hmPixels.forEach((p,i)=>p.id=i); hmSelected=group.map(p=>p.id); hmSegments=[]; hmActiveSegment=null; }
 function hmLinePoints(a,b) { let n=Math.max(1,parseInt(hmEl("lineCount").value)||1),out=[]; if(n==1)return[{x:a.x,y:a.y}]; for(let i=0;i<n;i++){let f=i/(n-1);out.push({x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f});} return out; }
 function hmCompressIds(ids) { ids=[...new Set(ids)].sort((a,b)=>a-b); let ranges=[],start=ids[0],prev=ids[0]; for(let i=1;i<=ids.length;i++){if(ids[i]!==prev+1){ranges.push({start,stop:prev+1});start=ids[i];} prev=ids[i];} return ranges; }
-function hmSegNodes(s) { return s.nodes||Array.from({length:Math.max(0,(s.stop||0)-(s.start||0))},(_,i)=>(s.start||0)+i); }
+function hmPatternNodes(p){let a=[];for(let i=p.start;i<p.stop;i++){let rel=i-p.start,span=(p.grp||1)+(p.spc||0);if(!span||rel%span<(p.grp||1))a.push(i);}return a;}
+function hmSegNodes(s) { return s.nodes||hmPatternNodes({start:s.start||0,stop:s.stop||0,grp:s.grp||1,spc:s.spc||0}); }
+function hmPackIds(ids){
+	ids=[...new Set(ids)].sort((a,b)=>a-b);
+	if(!ids.length)return [];
+	let ranges=hmCompressIds(ids);
+	if(ranges.length<2)return ranges.map(r=>({start:r.start,stop:r.stop,grp:1,spc:0,nodes:ids.filter(id=>id>=r.start&&id<r.stop)}));
+	let best=null;
+	for(let ri=0;ri<ranges.length;ri++){
+		let start=ranges[ri].start,grp=ranges[ri].stop-ranges[ri].start;
+		for(let rj=ri+1;rj<ranges.length;rj++){
+			let spc=ranges[rj].start-ranges[ri].stop;
+			if(spc<0)continue;
+			let candidate={start,stop:ids[ids.length-1]+1,grp,spc};
+			let nodes=hmPatternNodes(candidate);
+			if(nodes.length==ids.length&&nodes.every((n,i)=>n==ids[i]))best=candidate;
+		}
+	}
+	if(best)return [{...best,nodes:ids}];
+	let packed=[],i=0;
+	while(i<ranges.length){
+		let part=null;
+		for(let end=ranges.length;end>i+1;end--){
+			if(!i&&end==ranges.length)continue;
+			let sub=ids.filter(id=>id>=ranges[i].start&&id<ranges[end-1].stop),p=hmPackIds(sub);
+			if(p.length==1&&p[0].spc>0){part=p[0];break;}
+		}
+		if(part){packed.push(part);i=ranges.findIndex(r=>r.stop>part.stop-1)+1;}
+		else{let r=ranges[i++];packed.push({start:r.start,stop:r.stop,grp:1,spc:0,nodes:ids.filter(id=>id>=r.start&&id<r.stop)});}
+	}
+	return packed;
+}
 function hmStageRect() { return hmEl("stage").getBoundingClientRect(); }
 function hmUpdatePictureRect() {
 	let stage=hmEl("stage"), canvas=hmEl("canvas"), bg=hmEl("bg"), r=hmStageRect(), nw=bg.naturalWidth||0, nh=bg.naturalHeight||0;
@@ -3489,7 +3520,7 @@ function hmDraw() {
 }
 function hmTotalPixels(){return hmOutputs.reduce((n,o)=>n+(o.len||0),0)||((lastinfo.leds&&lastinfo.leds.count)||0);}
 function hmDrawCount(){let total=hmTotalPixels(),used=hmPixels.length,box=hmEl("countBox"); if(!box)return; hmEl("pixelCount").textContent=used+" / "+(total||"?"); box.className="hm-count "+(total&&used>total?"over":total&&used==total?"ok":"warn"); hmEl("outputCounts").innerHTML=hmOutputs.map(o=>{let u=hmPixels.filter(p=>(p.out||0)==o.id).length,cls=o.len&&u>o.len?"over":o.len&&u==o.len?"ok":"";return `<div class="hm-output-count ${cls}"><b>${o.name}</b><span>${u} / ${o.len||"?"}</span></div>`;}).join("");}
-function hmDrawSegments(){hmEl("segments").innerHTML=hmSegments.map((s,i)=>{let nodes=hmSegNodes(s),ranges=hmCompressIds(nodes);return `<div class="hm-seg${hmActiveSegment==i?" active":""}" onclick="hmSelectSegment(${i})"><b>${s.name}</b><span>${nodes.length} px</span><span>${ranges.length} range${ranges.length==1?"":"s"}</span></div>`;}).join("");}
+function hmDrawSegments(){hmEl("segments").innerHTML=hmSegments.map((s,i)=>{let nodes=hmSegNodes(s),packs=hmPackIds(nodes);return `<div class="hm-seg${hmActiveSegment==i?" active":""}" onclick="hmSelectSegment(${i})"><b>${s.name}</b><span>${nodes.length} px</span><span>${packs.length} WLED segment${packs.length==1?"":"s"}</span></div>`;}).join("");}
 function hmClearSelection(){hmSelected=[];hmDraw();}
 function hmDeleteSelected(){let del=[...hmSelected];if(hmMenuPixel!=null)del=[...new Set(del.concat(hmIdsForRun(hmMenuPixel)))];let runs=[...new Set(hmPixels.filter(p=>del.includes(p.id)&&p.run&&p.run.startsWith("run-")).map(p=>p.run))];hmPixels=hmPixels.filter(p=>!del.includes(p.id)&&!runs.includes(p.run));hmSelected=[];hmHideMenu();hmRenumberPixels();hmDraw();}
 function hmSelectRun(){let p=hmPixels.find(x=>x.id==hmMenuPixel);if(p)hmSelected=hmPixels.filter(x=>x.run==p.run).map(x=>x.id);hmHideMenu();hmDraw();}
@@ -3498,7 +3529,7 @@ function hmReverseRun(){if(hmMenuPixel==null)return;let ids=hmIdsForRun(hmMenuPi
 function hmSelectSegment(i){if(!hmSegments[i])return;hmActiveSegment=i;hmSelected=hmSegNodes(hmSegments[i]);hmDraw();hmEl("msg").textContent="Selected segment "+hmSegments[i].name+".";}
 function hmDeleteSegment(){if(hmActiveSegment==null||!hmSegments[hmActiveSegment]){hmEl("msg").textContent="Select a segment to delete first.";return;}let name=hmSegments[hmActiveSegment].name;hmSegments.splice(hmActiveSegment,1);hmActiveSegment=null;hmSelected=[];hmDraw();hmEl("msg").textContent="Deleted segment "+name+".";}
 function hmMakeSegment(){if(!hmSelected.length&&hmMenuPixel!=null)hmSelected=[hmMenuPixel];if(!hmSelected.length){hmEl("msg").textContent="Select pixels first.";return;}let color="#ffd166",name=hmEl("segName").value||"House segment",ids=[...hmSelected].sort((a,b)=>a-b);hmSelected.forEach(id=>{let p=hmPixels.find(x=>x.id==id);if(p)p.color=color;});hmSegments.push({name,color,nodes:ids});hmActiveSegment=hmSegments.length-1;hmHideMenu();hmDraw();hmEl("msg").textContent="Created one segment with "+ids.length+" selected pixel"+(ids.length==1?".":"s.");}
-async function hmApplySegments(){if(!hmSegments.length)hmMakeSegment();let expanded=[];hmSegments.forEach(s=>{let ranges=hmCompressIds(hmSegNodes(s));ranges.forEach((r,i)=>expanded.push({name:ranges.length>1?s.name+" "+(i+1):s.name,color:s.color,start:r.start,stop:r.stop}));});let seg=expanded.slice(0,lastinfo.leds.maxseg||32).map((s,id)=>({id,n:s.name,start:s.start,stop:s.stop,col:[hmRgb(s.color)],on:true}));let r=await fetch(getURL("/json/state"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({seg})});hmEl("msg").textContent=r.ok?"Segments sent to WLED. Non-contiguous mapper segments are sent as WLED ranges.":"Could not send segments.";}
+async function hmApplySegments(){if(!hmSegments.length)hmMakeSegment();let expanded=[];hmSegments.forEach(s=>{let packs=hmPackIds(hmSegNodes(s));packs.forEach((p,i)=>expanded.push({name:packs.length>1?s.name+" "+(i+1):s.name,color:s.color,start:p.start,stop:p.stop,grp:p.grp||1,spc:p.spc||0}));});let max=lastinfo.leds.maxseg||32,trimmed=expanded.length>max;let seg=expanded.slice(0,max).map((s,id)=>({id,n:s.name,start:s.start,stop:s.stop,grp:s.grp,spc:s.spc,col:[hmRgb(s.color)],on:true}));let r=await fetch(getURL("/json/state"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({seg})});hmEl("msg").textContent=r.ok?(trimmed?"Segments sent, but only "+max+" of "+expanded.length+" packed ranges fit WLED's segment limit.":"Segments sent to WLED using "+expanded.length+" packed segment"+(expanded.length==1?".":"s.")):"Could not send segments.";}
 function hmShowBg(src){let bg=hmEl("bg");bg.onload=hmUpdatePictureRect;bg.onerror=()=>{let data=localStorage.getItem("hm-bg-data");if(data&&bg.src!=data)bg.src=data;else hmUpdatePictureRect();};bg.src=src;bg.classList.remove("hm-hidden");hmEl("stage").classList.remove("empty");hmEl("empty").classList.add("hm-hidden");}
 async function hmUploadPhoto(file){if(!file)return;let ext=(file.name.split(".").pop()||"jpg").toLowerCase(),name="/housemap-bg."+ext,fd=new FormData();fd.append("data",file,name);try{await fetch(getURL("/upload"),{method:"POST",body:fd});localStorage.setItem("hm-bg",name);}catch(e){}try{let rd=new FileReader();rd.onload=()=>localStorage.setItem("hm-bg-data",rd.result);rd.readAsDataURL(file);}catch(e){}hmShowBg(URL.createObjectURL(file));}
 async function hmSaveLayout(){let data={pixels:hmPixels,segments:hmSegments,bg:localStorage.getItem("hm-bg")||"",currentOutput:hmCurrentOutput,view:{zoom:hmZoom,panX:hmPanX,panY:hmPanY}};localStorage.setItem("wled-housemap",JSON.stringify(data));let fd=new FormData();fd.append("data",new Blob([JSON.stringify(data)],{type:"application/json"}),"/housemap.json");try{await fetch(getURL("/upload"),{method:"POST",body:fd});hmEl("msg").textContent="Layout saved.";}catch(e){hmEl("msg").textContent="Layout saved in this browser.";}}
